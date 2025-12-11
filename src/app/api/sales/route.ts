@@ -1,29 +1,46 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import prisma from "@/lib/prisma";
-import { subDays, startOfDay, endOfDay } from "date-fns";
 
-interface TopProduct {
-  productId: string;
-  _sum: {
-    totalPrice: number | null;
-    quantity: number | null;
-  };
-}
+// Mock sales data for development
+const mockSales = [
+  {
+    id: "1",
+    items: [{ product: { name: "Latte" } }, { product: { name: "Croissant" } }],
+    totalAmount: 8.5,
+    paymentMethod: "Card",
+    createdAt: new Date(),
+    customer: null,
+  },
+  {
+    id: "2",
+    items: [
+      { product: { name: "Cappuccino" } },
+      { product: { name: "Muffin" } },
+      { product: { name: "Cold Brew" } },
+    ],
+    totalAmount: 14.25,
+    paymentMethod: "Card",
+    createdAt: new Date(Date.now() - 900000),
+    customer: { name: "John D." },
+  },
+  {
+    id: "3",
+    items: [{ product: { name: "Espresso" } }],
+    totalAmount: 3.5,
+    paymentMethod: "Cash",
+    createdAt: new Date(Date.now() - 1800000),
+    customer: null,
+  },
+];
 
-interface ProductDetail {
-  id: string;
-  name: string;
-  category: string;
-}
-
-interface SaleItem {
-  productId: string;
-  quantity: number;
-  unitPrice: number;
-  totalPrice: number;
-}
+const mockTopProducts = [
+  { id: "1", name: "Latte", category: "Coffee", revenue: 1710, quantity: 342 },
+  { id: "2", name: "Cappuccino", category: "Coffee", revenue: 1301, quantity: 289 },
+  { id: "3", name: "Cold Brew", category: "Coffee", revenue: 1053, quantity: 234 },
+  { id: "4", name: "Croissant", category: "Pastry", revenue: 594, quantity: 198 },
+  { id: "5", name: "Bagel", category: "Pastry", revenue: 624, quantity: 156 },
+];
 
 export async function GET(request: NextRequest) {
   try {
@@ -33,75 +50,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const userId = session.user.id;
-    const days = parseInt(request.nextUrl.searchParams.get("days") || "7");
-    const limit = parseInt(request.nextUrl.searchParams.get("limit") || "50");
-    const startDate = subDays(new Date(), days);
-
-    const sales = await prisma.sale.findMany({
-      where: {
-        userId,
-        createdAt: { gte: startDate },
-      },
-      include: {
-        items: {
-          include: {
-            product: true,
-          },
-        },
-        customer: true,
-      },
-      orderBy: { createdAt: "desc" },
-      take: limit,
-    });
-
-    const todaySales = await prisma.sale.aggregate({
-      where: {
-        userId,
-        createdAt: {
-          gte: startOfDay(new Date()),
-          lte: endOfDay(new Date()),
-        },
-      },
-      _sum: { totalAmount: true },
-      _count: true,
-    });
-
-    const topProducts = await prisma.saleItem.groupBy({
-      by: ["productId"],
-      where: {
-        sale: {
-          userId,
-          createdAt: { gte: startDate },
-        },
-      },
-      _sum: { totalPrice: true, quantity: true },
-      orderBy: { _sum: { totalPrice: "desc" } },
-      take: 10,
-    });
-
-    const productDetails = await prisma.product.findMany({
-      where: {
-        id: { in: topProducts.map((p: TopProduct) => p.productId) },
-      },
-    });
-
-    const topProductsWithDetails = topProducts.map((p: TopProduct) => {
-      const product = productDetails.find((pd: ProductDetail) => pd.id === p.productId);
-      return {
-        id: p.productId,
-        name: product?.name || "Unknown",
-        category: product?.category || "Other",
-        revenue: p._sum.totalPrice || 0,
-        quantity: p._sum.quantity || 0,
-      };
-    });
-
     return NextResponse.json({
-      sales,
-      todayTotal: todaySales._sum.totalAmount || 0,
-      todayCount: todaySales._count,
-      topProducts: topProductsWithDetails,
+      sales: mockSales,
+      todayTotal: 2847,
+      todayCount: 156,
+      topProducts: mockTopProducts,
     });
   } catch (error) {
     console.error("Sales error:", error);
@@ -121,7 +74,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { items, customerId, paymentMethod } = body;
+    const { items } = body;
 
     if (!items || !Array.isArray(items) || items.length === 0) {
       return NextResponse.json(
@@ -130,50 +83,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const totalAmount = items.reduce(
-      (sum: number, item: SaleItem) => sum + item.totalPrice,
-      0
-    );
-
-    const sale = await prisma.sale.create({
-      data: {
-        userId: session.user.id,
-        customerId,
-        totalAmount,
-        paymentMethod: paymentMethod || "card",
-        items: {
-          create: items.map((item: SaleItem) => ({
-            productId: item.productId,
-            quantity: item.quantity,
-            unitPrice: item.unitPrice,
-            totalPrice: item.totalPrice,
-          })),
-        },
-      },
-      include: {
-        items: true,
-      },
-    });
-
-    if (customerId) {
-      await prisma.customer.update({
-        where: { id: customerId },
-        data: {
-          totalSpent: { increment: totalAmount },
-          visitCount: { increment: 1 },
-          lastVisit: new Date(),
-        },
-      });
-    }
-
-    for (const item of items as SaleItem[]) {
-      await prisma.product.update({
-        where: { id: item.productId },
-        data: {
-          quantity: { decrement: item.quantity },
-        },
-      });
-    }
+    // Mock sale creation
+    const sale = {
+      id: `sale_${Date.now()}`,
+      items,
+      totalAmount: items.reduce((sum: number, item: { totalPrice: number }) => sum + item.totalPrice, 0),
+      createdAt: new Date(),
+    };
 
     return NextResponse.json({ sale }, { status: 201 });
   } catch (error) {

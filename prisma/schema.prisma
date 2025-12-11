@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -13,8 +13,8 @@ model User {
   passwordHash  String
   name          String
   businessName  String
-  businessType  BusinessType @default(OTHER)
-  plan          SubscriptionPlan @default(STARTER)
+  businessType  String    @default("OTHER")
+  plan          String    @default("STARTER")
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -67,7 +67,7 @@ model Customer {
   totalSpent  Float    @default(0)
   visitCount  Int      @default(0)
   lastVisit   DateTime @default(now())
-  segment     CustomerSegment @default(NEW)
+  segment     String   @default("NEW")
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -109,8 +109,8 @@ model SaleItem {
 model Alert {
   id          String   @id @default(cuid())
   userId      String
-  type        AlertType
-  severity    AlertSeverity @default(INFO)
+  type        String
+  severity    String   @default("INFO")
   title       String
   message     String
   insight     String?
@@ -126,13 +126,13 @@ model Alert {
 model Insight {
   id              String   @id @default(cuid())
   userId          String
-  type            InsightType
+  type            String
   title           String
   summary         String
-  details         String   @db.Text
-  recommendations String[]
+  details         String
+  recommendations String   @default("[]")
   confidence      Float
-  dataPoints      Json
+  dataPoints      String   @default("{}")
   createdAt       DateTime @default(now())
 
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -143,60 +143,14 @@ model Insight {
 model DailyMetrics {
   id              String   @id @default(cuid())
   userId          String
-  date            DateTime @db.Date
+  date            DateTime
   totalRevenue    Float    @default(0)
   transactionCount Int     @default(0)
   averageTicket   Float    @default(0)
   customerCount   Int      @default(0)
-  topProducts     Json     @default("[]")
+  topProducts     String   @default("[]")
   createdAt       DateTime @default(now())
 
   @@unique([userId, date])
   @@map("daily_metrics")
-}
-
-enum BusinessType {
-  COFFEE_SHOP
-  BOUTIQUE
-  CONVENIENCE_STORE
-  RESTAURANT
-  OTHER
-}
-
-enum SubscriptionPlan {
-  STARTER
-  GROWTH
-  PROFESSIONAL
-  ENTERPRISE
-}
-
-enum AlertType {
-  ANOMALY
-  OPPORTUNITY
-  TREND
-  INVENTORY
-  PERFORMANCE
-}
-
-enum AlertSeverity {
-  INFO
-  WARNING
-  CRITICAL
-  SUCCESS
-}
-
-enum InsightType {
-  TREND
-  ANOMALY
-  FORECAST
-  RECOMMENDATION
-  COMPARISON
-}
-
-enum CustomerSegment {
-  NEW
-  REGULAR
-  VIP
-  AT_RISK
-  CHURNED
 }
